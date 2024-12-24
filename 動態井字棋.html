@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3x3 動態數字連線遊戲</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f0f8ff;
+            margin: 0;
+            padding: 0;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        #board {
+            display: grid;
+            grid-template-columns: repeat(3, 100px);
+            grid-template-rows: repeat(3, 100px);
+            gap: 5px;
+            margin: 20px auto;
+            width: 320px;
+        }
+
+        .cell {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #fff;
+            border: 1px solid #ccc;
+            font-size: 36px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .cell.taken {
+            cursor: not-allowed;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin: 20px auto;
+            display: block;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        #message {
+            font-size: 18px;
+            margin-top: 20px;
+            color: #333;
+        }
+
+        .red {
+            color: red;
+        }
+
+        .black {
+            color: black;
+        }
+
+        #mode-selection {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>3x3 動態數字連線遊戲</h1>
+
+    <div id="mode-selection">
+        <button onclick="startGame('PvP')">PvP</button>
+        <button onclick="startGame('PvC')">PvC</button>
+        <button onclick="startGame('CvP')">CvP</button>
+    </div>
+
+    <div id="board" style="display: none;"></div>
+
+    <button onclick="resetGame()" style="display: none;" id="reset-button">重置遊戲</button>
+    <p id="message"></p>
+
+    <script>
+        const board = document.getElementById('board');
+        const message = document.getElementById('message');
+        const resetButton = document.getElementById('reset-button');
+        let cells = [];
+        let currentPlayer = 'red';
+        let gameActive = false;
+        let mode = '';
+        let playerMoves = { red: [], black: [] };
+        let stepCount = { red: 0, black: 0 };
+
+        const winningCombinations = [
+            [0, 1, 2],
+            [3, 4, 5],
+            [6, 7, 8],
+            [0, 3, 6],
+            [1, 4, 7],
+            [2, 5, 8],
+            [0, 4, 8],
+            [2, 4, 6],
+        ];
+
+        function startGame(selectedMode) {
+            mode = selectedMode;
+            gameActive = true;
+            currentPlayer = mode === 'CvP' ? 'black' : 'red';
+            playerMoves = { red: [], black: [] };
+            stepCount = { red: 0, black: 0 };
+            message.textContent = '';
+            document.getElementById('mode-selection').style.display = 'none';
+            board.style.display = 'grid';
+            resetButton.style.display = 'block';
+            createBoard();
+
+            if (mode === 'CvP' && currentPlayer === 'black') {
+                setTimeout(computerTurn, 500);
+            }
+        }
+
+        function createBoard() {
+            board.innerHTML = '';
+            cells = [];
+            for (let i = 0; i < 9; i++) {
+                const cell = document.createElement('div');
+                cell.classList.add('cell');
+                cell.setAttribute('data-index', i);
+                board.appendChild(cell);
+                cells.push(cell);
+            }
+            cells.forEach((cell, index) => {
+                cell.addEventListener('click', () => cellClick(cell, index));
+            });
+        }
+
+        function cellClick(cell, index) {
+            if (!gameActive || cell.classList.contains('taken') || (mode === 'CvP' && currentPlayer === 'black')) return;
+
+            stepCount[currentPlayer]++;
+            cell.textContent = stepCount[currentPlayer];
+            cell.classList.add(currentPlayer, 'taken');
+            playerMoves[currentPlayer].push(index);
+
+            if (playerMoves[currentPlayer].length > 3) {
+                const removedIndex = playerMoves[currentPlayer].shift();
+                cells[removedIndex].textContent = '';
+                cells[removedIndex].classList.remove('taken', currentPlayer);
+            }
+
+            if (checkWin(currentPlayer)) {
+                message.textContent = `玩家 ${currentPlayer === 'red' ? '紅色' : '黑色'} 獲勝！`;
+                gameActive = false;
+                return;
+            }
+
+            if (mode === 'PvP') {
+                currentPlayer = currentPlayer === 'red' ? 'black' : 'red';
+            } else if (mode === 'PvC' && currentPlayer === 'red') {
+                currentPlayer = 'black';
+                setTimeout(computerTurn, 500);
+            } else if (mode === 'CvP' && currentPlayer === 'red') {
+                currentPlayer = 'black';
+                setTimeout(computerTurn, 500);
+            }
+        }
+
+        function computerTurn() {
+            if (!gameActive || currentPlayer !== 'black') return;
+
+            const winIndex = findWinningMove('black');
+            if (winIndex !== -1) {
+                executeMove(winIndex, 'black');
+                return;
+            }
+
+            const blockIndex = findThreat('red');
+            if (blockIndex !== -1) {
+                executeMove(blockIndex, 'black');
+                return;
+            }
+
+            const availableCells = cells.filter(cell => !cell.classList.contains('taken'));
+            if (availableCells.length > 0) {
+                const randomIndex = Math.floor(Math.random() * availableCells.length);
+                executeMove(parseInt(availableCells[randomIndex].getAttribute('data-index')), 'black');
+            }
+        }
+
+        function findWinningMove(player) {
+            for (const combination of winningCombinations) {
+                const playerCells = combination.filter(index => cells[index].classList.contains(player));
+                const emptyCells = combination.filter(index => !cells[index].classList.contains('taken'));
+
+                if (playerCells.length === 2 && emptyCells.length === 1) {
+                    const playerNumbers = playerCells.map(index => parseInt(cells[index].textContent)).sort((a, b) => b - a);
+                    if (playerNumbers.length >= 2 && !playerCells.includes(playerMoves[player][0])) {
+                        return emptyCells[0];
+                    }
+                }
+            }
+            return -1;
+        }
+
+        function findThreat(player) {
+            for (const combination of winningCombinations) {
+                const playerCells = combination.filter(index => cells[index].classList.contains(player));
+                const emptyCells = combination.filter(index => !cells[index].classList.contains('taken'));
+
+                if (playerCells.length === 2 && emptyCells.length === 1) {
+                    const playerNumbers = playerCells.map(index => parseInt(cells[index].textContent)).sort((a, b) => b - a);
+                    if (playerNumbers.length >= 2) {
+                        const largestTwo = playerNumbers.slice(0, 2);
+                        if (largestTwo.length === 2) {
+                            return emptyCells[0];
+                        }
+                    }
+                }
+            }
+            return -1;
+        }
+
+        function executeMove(index, player) {
+            const cell = cells[index];
+            stepCount[player]++;
+            cell.textContent = stepCount[player];
+            cell.classList.add(player, 'taken');
+            playerMoves[player].push(index);
+
+            if (playerMoves[player].length > 3) {
+                const removedIndex = playerMoves[player].shift();
+                cells[removedIndex].textContent = '';
+                cells[removedIndex].classList.remove('taken', player);
+            }
+
+            if (checkWin(player)) {
+                message.textContent = `玩家 ${player === 'red' ? '紅色' : '黑色'} 獲勝！`;
+                gameActive = false;
+                return;
+            }
+
+            currentPlayer = player === 'black' ? 'red' : 'black';
+        }
+
+        function checkWin(player) {
+            return winningCombinations.some(combination => {
+                return combination.every(index => {
+                    return cells[index].classList.contains(player);
+                });
+            });
+        }
+
+        function resetGame() {
+            currentPlayer = 'red';
+            gameActive = false;
+            message.textContent = '';
+            document.getElementById('mode-selection').style.display = 'block';
+            board.style.display = 'none';
+            resetButton.style.display = 'none';
+        }
+    </script>
+</body>
+</html>
